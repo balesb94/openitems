@@ -70,6 +70,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .railform input::placeholder { color: var(--rail-dim); }
 .railform .r { display: flex; gap: 6px; }
 .railform .err { font-size: 12px; color: #ff8a80; }
+.addjob-btn { all: unset; box-sizing: border-box; cursor: pointer; display: block; width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px dashed rgba(255,255,255,.28); border-radius: 6px; color: var(--rail-ink); font-weight: 600; text-align: center; }
+.addjob-btn:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.45); }
+.addjob-btn:focus-visible { outline: 2px solid var(--focus); }
+.arch-toggle { all: unset; cursor: pointer; display: flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 12px; color: var(--rail-dim); padding: 2px 4px; border-radius: 4px; }
+.arch-toggle:hover { color: var(--rail-ink); }
+.arch-toggle:focus-visible { outline: 2px solid var(--focus); }
+.arch-toggle .car { width: 12px; height: 12px; transition: transform .15s; }
+.arch-toggle[aria-expanded="false"] .car { transform: rotate(-90deg); }
+.nav.archived { margin-top: 4px; }
+.nav.archived button { color: var(--rail-dim); }
+.nav.archived button.on { color: var(--rail-ink); }
+.rename { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 12px; margin-bottom: 14px; }
+.rename label { display: grid; gap: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); }
+.rename input { border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 6px 9px; font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.rename .acts { display: flex; gap: 6px; align-self: end; }
+.rename .err { flex-basis: 100%; color: var(--late); font-size: 12.5px; }
+.rename .hint { flex-basis: 100%; color: var(--ink-2); font-size: 12px; }
+.banner .btn { margin-left: 8px; }
 .rail .foot { margin-top: auto; font-size: 12px; color: var(--rail-dim); display: flex; flex-direction: column; gap: 8px; }
 .rail .foot .sync.bad { color: #ff8a80; }
 .rail .foot button { all: unset; cursor: pointer; color: var(--rail-ink); text-decoration: underline; text-underline-offset: 3px; font-size: 12px; }
@@ -230,9 +248,11 @@ tr.sub td { background: var(--surface-2); padding: 10px 12px; }
       <nav class="nav" id="nav-views"></nav>
     </div>
     <div>
-      <span class="lbl">Jobs <button type="button" id="addjob-toggle">+ Add job</button></span>
+      <span class="lbl">Jobs</span>
       <nav class="nav" id="nav-jobs"></nav>
+      <button type="button" class="addjob-btn" id="addjob-toggle">+ Add job</button>
       <div id="addjob-host"></div>
+      <div id="archived-host"></div>
     </div>
     <div class="foot">
       <span class="sync" id="sync"></span>
@@ -250,6 +270,7 @@ tr.sub td { background: var(--surface-2); padding: 10px 12px; }
       </div>
       <div class="stats" id="stats"></div>
     </div>
+    <div id="rename-host"></div>
     <div class="toolbar" id="toolbar"></div>
     <div id="editor-host"></div>
     <div id="body"><div class="loading">Loading…</div></div>

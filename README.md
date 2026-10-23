@@ -45,7 +45,7 @@ If `config.js` is left blank, the app runs in **demo mode** with sample data sav
 
 1. Sign in with the email and password you created for yourself.
 2. Your name starts out based on your email address. Click **Change name** in the sidebar to fix it. Each person can do the same.
-3. Add your jobs with **+ Add job** in the sidebar. "Office / General" is already there for items that aren't tied to a job.
+3. Add your jobs with the **+ Add job** button under the job list in the sidebar. "Office / General" is already there for items that aren't tied to a job.
 4. Send the link to your team along with their temporary passwords.
 
 ## Updating the app
@@ -87,7 +87,7 @@ where email = 'their.email@grunloh.com';
 - **Logins and security.** Only signed-in users can read or change anything. The database enforces this, not just the page. Everyone signed in sees every job. People can only rename themselves.
 - **Staying in sync.** The app saves each change as you make it and pulls everyone else's changes every 20 seconds, and whenever you come back to the tab. If you're typing in a cell when an update arrives, it waits until you click away so nothing jumps around under you.
 - **Who did what.** Every item records who added it, who last changed it, and who checked it off and when. Open an item's **···** menu to see it.
-- **Archiving jobs.** **Archive job** on a job page hides the job and its items from every list. Adding a job with the same number later brings it back.
+- **Adding, renaming and archiving jobs.** **+ Add job** sits under the job list in the sidebar. On a job page, **Rename job** changes the name or the job number; changing the number moves all of that job's items and notes with it. **Archive job** hides a finished job and its items from every list. Archived jobs are listed under **Archived jobs** at the bottom of the sidebar, where you can open one and click **Restore job**.
 - **The dashboard.** The PM dashboard can read these same tables (`items`, `jobs`, `sections`) to roll up counts by job, person, section, overdue and critical.
 
 ## Shortcuts in an "Add item" cell

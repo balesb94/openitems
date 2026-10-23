@@ -184,6 +184,10 @@ const demo = {
     DEMO[table === 'job_notes' ? 'notes' : table].push(r); demoSave(); return clone(r);
   },
   async update(table, match, patch) {
+    if (table === 'jobs' && patch.id && patch.id !== match.id) {
+      DEMO.items.forEach(i => { if (i.job_id === match.id) i.job_id = patch.id; });
+      DEMO.notes.forEach(n => { if (n.job_id === match.id) n.job_id = patch.id; });
+    }
     const list = DEMO[table === 'job_notes' ? 'notes' : table]; const out = [];
     list.forEach(r => { if (matches(r, match)) { Object.assign(r, patch, table === 'items' ? { updated_at: new Date().toISOString(), updated_by: DEMO.me } : {}); out.push(clone(r)); } });
     demoSave(); return out;
@@ -203,6 +207,7 @@ const VIEW_KEY = 'openitems-view';
 let view = Object.assign({ type: 'mine', jobId: null, who: 'all', showDone: false, notes: true, group: 'job' }, store.get(VIEW_KEY, {}));
 let collapsed = store.get('openitems-collapsed', {});
 let moreOpen = null, editing = false, delArm = null, addingJob = false, addJobErr = '', acctForm = null, acctErr = '';
+let showArchived = false, renamingJob = false, renameErr = '';
 let lastSync = null, syncErr = null, pendingRender = false, loaded = false;
 const drafts = {};                 // add-row drafts, keyed by block
 const pending = new Map();         // itemId -> {field: value} not yet confirmed by the server
@@ -214,7 +219,10 @@ const firstName = id => nameOf(id).split(' ')[0];
 const job = id => S.jobs.find(j => j.id === id);
 const sec = id => S.sections.find(s => s.id === id);
 const people = () => S.profiles.filter(p => p.active !== false).slice().sort((a, b) => a.name.localeCompare(b.name));
-const openJobs = () => S.jobs.filter(j => !j.archived).slice().sort((a, b) => (a.id === 'OFF') - (b.id === 'OFF') || a.id.localeCompare(b.id, undefined, { numeric: true }));
+const jobSort = (a, b) => (a.id === 'OFF') - (b.id === 'OFF') || a.id.localeCompare(b.id, undefined, { numeric: true });
+const openJobs = () => S.jobs.filter(j => !j.archived).slice().sort(jobSort);
+const archivedJobs = () => S.jobs.filter(j => j.archived).slice().sort(jobSort);
+const JOB_ID_RE = /^[A-Za-z0-9-]{1,12}$/;
 const orderedSections = () => S.sections.slice().sort((a, b) => (a.sort - b.sort) || (a.id - b.id));
 
 function applyData(d) {
@@ -310,6 +318,9 @@ function renderNav() {
       <div class="r"><input id="aj-code" placeholder="Job #" style="max-width:82px" aria-label="Job number"><input id="aj-name" placeholder="Job name" aria-label="Job name"></div>
       ${addJobErr ? `<div class="err">${esc(addJobErr)}</div>` : ''}
       <button type="submit" class="btn primary small">Add job</button></form>` : '';
+  const arch = archivedJobs();
+  $('archived-host').innerHTML = arch.length ? `<button type="button" class="arch-toggle" id="arch-toggle" aria-expanded="${showArchived}">${caretSvg}Archived jobs (${arch.length})</button>
+    ${showArchived ? `<nav class="nav archived">${arch.map(j => `<button type="button" data-nav="job:${esc(j.id)}" class="${view.type === 'job' && view.jobId === j.id ? 'on' : ''}" title="${esc(j.id + ' · ' + j.name)}"><span class="nm"><span class="code">${esc(j.id)}</span>${esc(j.name)}</span></button>`).join('')}</nav>` : ''}` : '';
   renderSync();
 }
 
@@ -325,7 +336,7 @@ function renderHead() {
   if (view.type === 'mine') { title = 'My items'; sub = `Everything assigned to ${firstName(S.me)} across all jobs.`; }
   else if (view.type === 'all') { title = 'All open items'; sub = 'Every open item across all jobs.'; }
   else if (view.type === 'done') { title = 'Completed'; sub = 'Checked-off items across all jobs.'; }
-  else { const j = job(view.jobId); title = `<span class="jc">${esc(j.id)}</span>${esc(j.name)}`; sub = 'This job only. Pull it up for job team meetings. Click any cell to edit.'; }
+  else { const j = job(view.jobId); title = `<span class="jc">${esc(j.id)}</span>${esc(j.name)}`; sub = j.archived ? 'Archived job. Its items are hidden from every other list.' : 'This job only. Pull it up for job team meetings. Click any cell to edit.'; }
   $('title').innerHTML = title; $('subtitle').textContent = sub;
   if (view.type === 'done') { $('stats').innerHTML = ''; return; }
   const open = scope().filter(i => !i.done);
@@ -334,7 +345,23 @@ function renderHead() {
 }
 
 function renderBanner() {
-  $('banner').innerHTML = LIVE ? '' : `<div class="banner">Demo mode. Add your Supabase settings to config.js to connect the shared database. Until then, everything here is sample data saved in this browser only.</div>`;
+  let h = LIVE ? '' : `<div class="banner">Demo mode. Add your Supabase settings to config.js to connect the shared database. Until then, everything here is sample data saved in this browser only.</div>`;
+  const j = view.type === 'job' && job(view.jobId);
+  if (j && j.archived) h += `<div class="banner">Job ${esc(j.id)} is archived. Its items don't appear in My items, All open items, Completed, or the job list. <button type="button" class="btn primary small" id="restore-job">Restore job</button></div>`;
+  $('banner').innerHTML = h;
+}
+
+function renderRename() {
+  const j = view.type === 'job' && job(view.jobId);
+  if (!renamingJob || !j) { $('rename-host').innerHTML = ''; return; }
+  const lockId = j.id === 'OFF';
+  $('rename-host').innerHTML = `<form class="rename" id="rename-form" autocomplete="off">
+    <label>Job #<input id="rn-code" value="${esc(j.id)}" style="width:96px" ${lockId ? 'disabled' : ''}></label>
+    <label style="flex:1;min-width:200px">Job name<input id="rn-name" value="${esc(j.name)}" style="width:100%"></label>
+    <div class="acts"><button type="submit" class="btn primary small">Save</button><button type="button" class="btn ghost small" id="rename-cancel">Cancel</button></div>
+    ${renameErr ? `<div class="err">${esc(renameErr)}</div>` : ''}
+    ${lockId ? '' : '<div class="hint">Changing the job number moves all of this job\'s items and notes with it.</div>'}
+  </form>`;
 }
 
 function renderToolbar() {
@@ -344,7 +371,11 @@ function renderToolbar() {
   if (view.type !== 'done') h += `<label class="chk"><input type="checkbox" id="show-done" ${view.showDone ? 'checked' : ''}> Show completed</label>`;
   if (view.type === 'job') h += `<label class="chk"><input type="checkbox" id="show-notes" ${view.notes ? 'checked' : ''}> Job notes</label>`;
   h += `<button type="button" class="btn ghost small" id="edit-secs">${editing ? 'Close section editor' : 'Edit sections'}</button>`;
-  if (view.type === 'job' && view.jobId !== 'OFF') h += `<button type="button" class="btn ghost small" id="archive-job">Archive job</button>`;
+  if (view.type === 'job') {
+    h += `<button type="button" class="btn ghost small" id="rename-job">Rename job</button>`;
+    const j = job(view.jobId);
+    if (view.jobId !== 'OFF' && j && !j.archived) h += `<button type="button" class="btn ghost small" id="archive-job">Archive job</button>`;
+  }
   if (view.type !== 'done') h += `<div class="tip">Cells grow as you type. Shift+Enter starts a new line, Enter saves. Shortcuts in an "Add item" cell: <code>@mike</code> assign · <code>fri</code> <code>tmrw</code> <code>11/3</code> <code>in 5d</code> due · <code>!</code> critical${view.type !== 'job' && view.group === 'section' ? ' · <code>#2417</code> job' : ''}.</div>`;
   $('toolbar').innerHTML = h;
 }
@@ -473,7 +504,7 @@ function render(keepFocus) {
   if (!loaded) return;
   pendingRender = false;
   store.set(VIEW_KEY, view); store.set('openitems-collapsed', collapsed);
-  renderBanner(); renderWho(); renderNav(); renderHead(); renderToolbar(); renderEditor(); renderBody();
+  renderBanner(); renderWho(); renderNav(); renderHead(); renderRename(); renderToolbar(); renderEditor(); renderBody();
   if (keepFocus) { const el = document.getElementById(keepFocus); if (el) { el.focus(); if (el.classList.contains('ed')) placeCaretEnd(el); } }
 }
 function softRender() { if (isEditing()) pendingRender = true; else render(); }
@@ -563,7 +594,7 @@ async function commitNew(key, focusAfter) {
 /* ================= events ================= */
 document.addEventListener('click', async e => {
   const nav = e.target.closest('[data-nav]');
-  if (nav) { const k = nav.dataset.nav; moreOpen = null;
+  if (nav) { const k = nav.dataset.nav; moreOpen = null; renamingJob = false; renameErr = '';
     view = Object.assign({}, view, k.startsWith('job:') ? { type: 'job', jobId: k.slice(4) } : { type: k, jobId: null, who: 'all' });
     render(); window.scrollTo(0, 0); return; }
   const grp = e.target.closest('[data-group]'); if (grp) { view.group = grp.dataset.group; render(); return; }
@@ -582,6 +613,15 @@ document.addEventListener('click', async e => {
   if (id === 'convert') { convertNotes(); return; }
   if (id === 'notes-merge') { mergeNotes(); return; }
   if (id === 'reset') { DEMO = demoSeed(); demoSave(); location.reload(); return; }
+  if (id === 'arch-toggle' || e.target.closest('#arch-toggle')) { showArchived = !showArchived; renderNav(); return; }
+  if (id === 'rename-job') { renamingJob = !renamingJob; renameErr = ''; render(); const f = $('rn-name'); if (f) { f.focus(); f.select(); } return; }
+  if (id === 'rename-cancel') { renamingJob = false; renameErr = ''; render(); return; }
+  if (id === 'restore-job') {
+    const jid = view.jobId;
+    try { await db.update('jobs', { id: jid }, { archived: false }); const j = job(jid); if (j) j.archived = false; render(); toast(`Restored job ${jid}`); }
+    catch (err) { fail(err); }
+    return;
+  }
   if (id === 'archive-job') {
     const btn = e.target;
     if (!btn.dataset.armed) { btn.dataset.armed = '1'; btn.textContent = 'Click again to archive'; btn.classList.add('danger'); return; }
@@ -647,10 +687,34 @@ document.addEventListener('submit', async e => {
     catch (err) { fail(err); }
     return;
   }
+  if (f.id === 'rename-form') {
+    const j = job(view.jobId); if (!j) return;
+    const code = j.id === 'OFF' ? 'OFF' : $('rn-code').value.trim(); const name = $('rn-name').value.trim();
+    renameErr = '';
+    if (!name) renameErr = 'Enter a job name.';
+    else if (!JOB_ID_RE.test(code)) renameErr = 'Job number can use letters, numbers and dashes only (12 max).';
+    else if (code !== j.id && S.jobs.some(x => x !== j && x.id.toLowerCase() === code.toLowerCase())) renameErr = `Job ${code} already exists.`;
+    if (renameErr) { const c = j.id === 'OFF' ? '' : $('rn-code').value, n = $('rn-name').value; renderRename(); if ($('rn-code') && c) $('rn-code').value = c; $('rn-name').value = n; return; }
+    const oldId = j.id; const patch = code !== oldId ? { id: code, name } : { name };
+    try {
+      await db.update('jobs', { id: oldId }, patch);
+      j.name = name;
+      if (code !== oldId) {
+        j.id = code;
+        S.items.forEach(i => { if (i.job_id === oldId) i.job_id = code; });
+        if (S.notes[oldId]) { S.notes[code] = Object.assign(S.notes[oldId], { job_id: code }); delete S.notes[oldId]; }
+        if (notesState[oldId]) { notesState[code] = notesState[oldId]; delete notesState[oldId]; }
+        view.jobId = code;
+      }
+      renamingJob = false; render(); toast(code !== oldId ? `Job ${oldId} is now ${code}` : 'Job renamed');
+      sync();
+    } catch (err) { renameErr = /duplicate|unique|conflict/i.test(err.message) ? `Job ${code} already exists.` : err.message; renderRename(); }
+    return;
+  }
   if (f.id === 'addjob-form') {
     const code = $('aj-code').value.trim(), name = $('aj-name').value.trim();
     if (!code || !name) addJobErr = 'Enter both a job number and a name.';
-    else if (!/^[A-Za-z0-9-]{1,12}$/.test(code)) addJobErr = 'Job number can use letters, numbers and dashes only (12 max).';
+    else if (!JOB_ID_RE.test(code)) addJobErr = 'Job number can use letters, numbers and dashes only (12 max).';
     else if (S.jobs.some(j => j.id.toLowerCase() === code.toLowerCase())) {
       const old = S.jobs.find(j => j.id.toLowerCase() === code.toLowerCase());
       if (old.archived) {
